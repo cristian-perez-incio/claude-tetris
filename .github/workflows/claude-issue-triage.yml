@@ -1,0 +1,61 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+concurrency:
+  group: claude-triage-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    if: |
+      github.event.issue.user.type != 'Bot' &&
+      !contains(github.event.issue.title, '@claude') &&
+      !contains(github.event.issue.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Check for existing triage
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          done=$(gh api "repos/${{ github.repository }}/issues/${{ github.event.issue.number }}/comments" \
+            --jq 'any(.[]; .body | startswith("<!-- claude-triage -->"))')
+          echo "done=$done" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout repository
+        if: github.event.action == 'opened' || steps.check.outputs.done == 'false'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude issue triage
+        if: github.event.action == 'opened' || steps.check.outputs.done == 'false'
+        uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*),Bash(gh label create:*),Read,Grep,Glob"'
+          prompt: |
+            Vas a triar el issue #${{ github.event.issue.number }} del repositorio ${{ github.repository }}.
+
+            Pasos:
+            1. Lee el issue completo: `gh issue view ${{ github.event.issue.number }} --json title,body,labels,comments`.
+            2. Lee `CLAUDE.md` en la raíz del repo para entender la arquitectura del proyecto.
+            3. Lee el código relevante (`game.js`, `index.html`, `style.css`) para fundamentar tu diagnóstico con referencias concretas (archivo:línea, nombres de funciones como `collide`, `tryRotate`, `clearLines`, `draw`, etc.).
+            4. Decide las labels apropiadas:
+               - Consulta las labels existentes con `gh label list` y prefiere reutilizarlas (`bug`, `enhancement`, `documentation`, `question`, `accessibility`, `good first issue`, `help wanted`, `invalid`, `duplicate`, `wontfix`).
+               - Si ninguna encaja para el área o la prioridad, puedes crear una nueva label con `gh label create` usando el prefijo `area:` (p.ej. `area:gameplay`, `area:render`, `area:input`, `area:ui`) o `priority:` (p.ej. `priority:high`). No crees más de 4 labels en total por issue.
+               - Aplica las labels elegidas con `gh issue edit ${{ github.event.issue.number }} --add-label "<label1>,<label2>"`.
+            5. Publica **un único comentario** en español con `gh issue comment ${{ github.event.issue.number }} --body-file <archivo>`. El comentario debe:
+               - Empezar exactamente con la línea `<!-- claude-triage -->` (marcador interno, no lo expliques al usuario).
+               - Incluir las secciones: `## Resumen`, `## Diagnóstico técnico` (con referencias a archivo:línea/función), `## Enfoque de solución propuesto` (pasos de alto nivel, sin escribir el código de la solución), `## Cómo verificar` (recordando que no hay build/test: abrir `index.html` o `python3 -m http.server 8000`), y `## Labels aplicadas`.
+               - Si el issue es ambiguo o falta información, dilo explícitamente en el diagnóstico y lista las preguntas pendientes en vez de inventar detalles.
+            6. No modifiques código, no crees ramas ni pull requests. Tu única salida son las labels y el comentario de diagnóstico.
