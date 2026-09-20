@@ -14,6 +14,8 @@ const COLORS = [
   '#90caf9', // J - pale blue
   '#ffb74d', // L - orange
   '#b0bec5', // N - nut (steel gray)
+  '#ff7043', // Bomba - deep orange
+  '#ffee58', // Rayo - bright yellow
 ];
 
 const PIECES = [
@@ -26,7 +28,15 @@ const PIECES = [
   [[6,0,0],[6,6,6],[0,0,0]],                  // J
   [[0,0,7],[7,7,7],[0,0,0]],                  // L
   [[8,8,8],[8,0,8],[8,8,8]],                  // N - nut (hollow center)
+  [[9]],                                       // Bomba (1x1, power-up)
+  [[10]],                                      // Rayo (1x1, power-up)
 ];
+
+const BOMB = 9;
+const BOLT = 10;
+const POWERUP_CHANCE = 0.1;
+const POWERUP_COOLDOWN = 3;
+const POWERUP_SCORE_PER_BLOCK = 20;
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
@@ -45,7 +55,7 @@ const themeToggleInput = document.getElementById('theme-toggle-input');
 
 const THEME_STORAGE_KEY = 'tetris-theme';
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, theme;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, theme, powerupCooldown;
 
 function applyTheme(t) {
   theme = t;
@@ -151,8 +161,44 @@ function softDrop() {
   }
 }
 
+function isPowerup(p) {
+  return p.type === BOMB || p.type === BOLT;
+}
+
+function detonate(p) {
+  let destroyed = 0;
+  if (p.type === BOMB) {
+    for (let r = p.y - 1; r <= p.y + 1; r++)
+      for (let c = p.x - 1; c <= p.x + 1; c++)
+        if (r >= 0 && r < ROWS && c >= 0 && c < COLS && board[r][c]) {
+          board[r][c] = 0;
+          destroyed++;
+        }
+  } else {
+    for (let r = 0; r < ROWS; r++)
+      if (board[r][p.x]) {
+        board[r][p.x] = 0;
+        destroyed++;
+      }
+  }
+  score += destroyed * POWERUP_SCORE_PER_BLOCK;
+  updateHUD();
+}
+
+function nextPiece() {
+  if (powerupCooldown > 0) {
+    powerupCooldown--;
+    return randomPiece();
+  }
+  if (Math.random() >= POWERUP_CHANCE) return randomPiece();
+  powerupCooldown = POWERUP_COOLDOWN;
+  const type = Math.random() < 0.5 ? BOMB : BOLT;
+  return { type, shape: [[type]], x: Math.floor(COLS / 2), y: 0 };
+}
+
 function lockPiece() {
-  merge();
+  if (isPowerup(current)) detonate(current);
+  else merge();
   clearLines();
   spawn();
 }
@@ -163,7 +209,7 @@ function spawn() {
     endGame();
     return;
   }
-  next = randomPiece();
+  next = nextPiece();
   drawNext();
 }
 
@@ -182,7 +228,35 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
   // highlight
   context.fillStyle = 'rgba(255,255,255,0.12)';
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  if (colorIndex === BOMB) drawBombGlyph(context, x * size, y * size, size);
+  else if (colorIndex === BOLT) drawBoltGlyph(context, x * size, y * size, size);
   context.globalAlpha = 1;
+}
+
+function drawBombGlyph(context, px, py, size) {
+  const cx = px + size / 2, cy = py + size * 0.58;
+  context.fillStyle = 'rgba(0,0,0,0.6)';
+  context.beginPath();
+  context.arc(cx, cy, size * 0.25, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = 'rgba(0,0,0,0.6)';
+  context.lineWidth = Math.max(1, size * 0.07);
+  context.beginPath();
+  context.moveTo(cx + size * 0.12, cy - size * 0.2);
+  context.lineTo(cx + size * 0.25, cy - size * 0.34);
+  context.stroke();
+}
+
+function drawBoltGlyph(context, px, py, size) {
+  const pts = [[0.58, 0.14], [0.28, 0.54], [0.48, 0.54], [0.38, 0.86], [0.72, 0.42], [0.52, 0.42]];
+  context.fillStyle = '#fff';
+  context.beginPath();
+  pts.forEach(([fx, fy], i) => {
+    const X = px + fx * size, Y = py + fy * size;
+    if (i === 0) context.moveTo(X, Y); else context.lineTo(X, Y);
+  });
+  context.closePath();
+  context.fill();
 }
 
 function drawGrid() {
@@ -285,6 +359,7 @@ function init() {
   paused = false;
   gameOver = false;
   dropInterval = 1000;
+  powerupCooldown = 0;
   dropAccum = 0;
   lastTime = performance.now();
   next = randomPiece();

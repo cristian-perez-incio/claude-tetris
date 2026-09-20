@@ -25,6 +25,7 @@ All game logic lives in `game.js` (single file, no modules). Global mutable stat
 - **Collision**: `collide(shape, ox, oy)` is the single source of truth, used for movement, rotation, ghost piece, and spawn checks.
 - **Game loop**: `requestAnimationFrame`-driven `loop()` accumulates `dt` and advances the piece when `dropAccum >= dropInterval`; `dropInterval` shrinks as `level` increases (`max(100, 1000 - (level-1)*90)`).
 - **Line clear / scoring**: `clearLines()` splices completed rows out (from bottom, re-checking the same index after splice), scores via `LINE_SCORES` table multiplied by `level`, and recomputes `level`/`dropInterval`.
+- **Power-ups**: `BOMB` (9, 3x3 area) and `BOLT` (10, full column) are 1x1 pieces in `PIECES`/`COLORS`, never drawn by `randomPiece()`. `nextPiece()` gives each new `next` piece a `POWERUP_CHANCE` (10%) of being one (random bomb/bolt), with `POWERUP_COOLDOWN` normal pieces guaranteed after each. `lockPiece()` calls `detonate()` instead of `merge()` for them (no gravity after destroying blocks). Glyphs drawn in `drawBlock()`.
 - **Rendering**: `draw()` clears+redraws grid, locked board, ghost piece (`ghostY()`, alpha 0.2), and the falling piece every frame; `drawNext()` renders the preview canvas separately.
 - Input is a single `keydown` listener that ignores input when `paused || gameOver` (except `KeyP` which always toggles pause).
 

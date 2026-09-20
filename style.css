@@ -200,6 +200,16 @@ body {
   gap: 4px;
 }
 
+.pu-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.pu-bomb { background: #ff7043; }
+.pu-bolt { background: #ffee58; }
+
 kbd {
   background: var(--kbd-bg);
   border: 1px solid var(--kbd-border);
